@@ -8,6 +8,13 @@ class RoboticArm2D:
         self.theta1 = 0
         self.theta2 = 0
         
+        self.target_theta1 = 0 
+        self.target_theta2 = 0
+        
+    def update_motion(self , kp = 0.1):
+        self.theta1 += kp * (self.target_theta1 - self.theta1)
+        self.theta2 += kp * (self.target_theta2 - self.theta2)
+        
     def set_angles(self , theta1 , theta2):
             self.theta1 = theta1 
             self.theta2 = theta2

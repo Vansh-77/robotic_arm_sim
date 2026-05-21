@@ -5,6 +5,7 @@ from matplotlib.widgets import Slider
 
 from arm import RoboticArm2D
 from config import *
+from utils import * 
 from ik import analytical_ik
 
 l1 = LINK1_LENGTH
@@ -47,22 +48,15 @@ ax.grid()
 line, = ax.plot([], [], 'o-', lw=4)
 target_plot, = ax.plot([], [], 'rx', markersize=12)
 
-# joint1_path, = ax.plot([] , [] , "--" , lw=2)
-# end_path, = ax.plot([] , [] , "r-" , lw=2)
-
-# joint1_x_history = []
-# joint1_y_history = []
-
-# end_x_history = []
-# end_y_history = []
 
 def on_click(event):
     global target_x , target_y
     
     if event.xdata is None or event.ydata is None:
         return
-    target_x = event.xdata
-    target_y = event.ydata
+
+    target_x , target_y = target_constaint(event.xdata,event.ydata,arm.l1 , arm.l2)
+    
     print(f"Target: ({target_x:.2f}, {target_y:.2f})")
     
 fig.canvas.mpl_connect('button_press_event', on_click)
@@ -71,33 +65,21 @@ def update(frame):
 
     try:
         theta1 , theta2 = analytical_ik(target_x,target_y, arm.l1 , arm.l2)
-        arm.set_angles(theta1, theta2)
+        arm.target_theta1 = theta1
+        arm.target_theta2 = theta2
         
     except:
         pass
     
+    arm.update_motion()
     x, y = arm.forward_kinematics()
 
     line.set_data(x, y)
     
     target_plot.set_data([target_x], [target_y])
-     # Extract points
-    # x1, y1 = x[1], y[1]
-    # x2, y2 = x[2], y[2]
-
-    # Store history
-    # joint1_x_history.append(x1)
-    # joint1_y_history.append(y1)
-
-    # end_x_history.append(x2)
-    # end_y_history.append(y2)
-
-    # Draw trajectory curves
-    # joint1_path.set_data(joint1_x_history, joint1_y_history)
-    # end_path.set_data(end_x_history, end_y_history)
 
     return line,target_plot
-#   joint1_path, end_path
+
 
 ani = FuncAnimation(fig, update, interval=1000/FPS)
 
