@@ -1,9 +1,10 @@
 import numpy as np
-
+from config import *
 class RoboticArm2D:
     def __init__(self, l1 , l2):
         self.l1 = l1
         self.l2 = l2
+        self.max_velocity = MAX_VELOCITY
         
         self.theta1 = 0
         self.theta2 = 0
@@ -12,8 +13,8 @@ class RoboticArm2D:
         self.target_theta2 = 0
         
     def update_motion(self , kp = 0.1):
-        self.theta1 += kp * (self.target_theta1 - self.theta1)
-        self.theta2 += kp * (self.target_theta2 - self.theta2)
+        self.theta1 += np.clip(kp * (self.target_theta1 - self.theta1), -self.max_velocity , self.max_velocity)
+        self.theta2 += np.clip(kp * (self.target_theta2 - self.theta2), -self.max_velocity , self.max_velocity)
         
     def set_angles(self , theta1 , theta2):
             self.theta1 = theta1 
