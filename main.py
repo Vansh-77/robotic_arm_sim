@@ -2,11 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider
-
 from arm import RoboticArm2D
 from config import *
 from utils import * 
 from ik import analytical_ik
+from collision import *
 
 l1 = LINK1_LENGTH
 l2 = LINK2_LENGTH
@@ -48,6 +48,11 @@ ax.grid()
 line, = ax.plot([], [], 'o-', lw=4)
 target_plot, = ax.plot([], [], 'rx', markersize=12)
 
+obstacle_x = 1
+obstacle_y = 1
+obstacle_radius = 0.3
+obstacle = plt.Circle((obstacle_x,obstacle_y), obstacle_radius,color="red", alpha=0.5)
+ax.add_patch(obstacle)
 
 def on_click(event):
     global target_x , target_y
@@ -64,10 +69,32 @@ fig.canvas.mpl_connect('button_press_event', on_click)
 def update(frame):
 
     try:
-        theta1 , theta2 = analytical_ik(target_x,target_y, arm.l1 , arm.l2)
-        arm.target_theta1 = theta1
-        arm.target_theta2 = theta2
-        
+        solutions = analytical_ik(
+        target_x,
+        target_y,
+        arm.l1,
+        arm.l2
+        )
+
+        best_solution = None
+
+        for theta1, theta2 in solutions:
+            print(f"Checking solution: theta1={np.degrees(theta1):.2f}, theta2={np.degrees(theta2):.2f}")
+            collision = check_collision_angles(
+                arm,
+                theta1,
+                theta2,
+                obstacle_x,
+                obstacle_y,
+                obstacle_radius
+            )
+
+            if not collision:
+                best_solution = (theta1, theta2)
+                print("Found collision-free solution.")
+                break
+        arm.target_theta1 = best_solution[0]
+        arm.target_theta2 = best_solution[1]
     except:
         pass
     
@@ -77,6 +104,13 @@ def update(frame):
     line.set_data(x, y)
     
     target_plot.set_data([target_x], [target_y])
+    
+    collision = check_collision(x, y, obstacle_x, obstacle_y, obstacle_radius)
+
+    if collision:
+        line.set_color('red')
+    else:
+        line.set_color('blue')
 
     return line,target_plot
 
