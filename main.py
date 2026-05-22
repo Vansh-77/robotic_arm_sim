@@ -5,9 +5,9 @@ from matplotlib.widgets import Slider
 
 from arm import RoboticArm2D
 from config import *
-from utils import *
+from utils import target_constaint
 from ik import analytical_ik
-from collision import *
+from collision import trajectory_collides, check_collision
 
 l1 = LINK1_LENGTH
 l2 = LINK2_LENGTH
@@ -63,7 +63,7 @@ obstacle_radius = 0.3
 obstacle = plt.Circle(
     (obstacle_x, obstacle_y),
     obstacle_radius,
-    color="red",
+    color='red',
     alpha=0.5
 )
 
@@ -83,117 +83,145 @@ def on_click(event):
         arm.l2
     )
 
+    waypoint_plot.set_data([], [])
+
     try:
 
-        solutions = analytical_ik(
+        target_solutions = analytical_ik(
             target_x,
             target_y,
             arm.l1,
             arm.l2
         )
 
-        best_solution = None
+        found = False
 
-        for theta1, theta2 in solutions:
+        for theta1, theta2 in target_solutions:
 
-            collision = check_collision_angles(
-                arm,
+            arm.plan_trajectory(
                 theta1,
                 theta2,
+                steps=100
+            )
+
+            direct_collision = trajectory_collides(
+                arm,
+                arm.trajectory,
                 obstacle_x,
                 obstacle_y,
                 obstacle_radius
             )
 
-            if not collision:
-                best_solution = (theta1, theta2)
+            if not direct_collision:
+
+                arm.current_waypoint = 0
+                found = True
                 break
-
-        if best_solution is None:
-            return
-
-        arm.plan_trajectory(
-            best_solution[0],
-            best_solution[1]
-        )
-
-        collision = trajectory_collides(
-            arm,
-            arm.trajectory,
-            obstacle_x,
-            obstacle_y,
-            obstacle_radius
-        )
-
-        if collision:
-            
 
             dx = target_x - obstacle_x
             dy = target_y - obstacle_y
 
             length = np.sqrt(dx**2 + dy**2)
 
+            if length == 0:
+                continue
+
             dx /= length
             dy /= length
 
-            perp_x = dy
-            perp_y = -dx
+            directions = [
+                ( dy,  dx),
+                (-dy, -dx),
+                ( dy, -dx),
+                (-dy,  dx)
+            ]
 
-            waypoint_x = obstacle_x + perp_x * 0.8
-            waypoint_y = obstacle_y + perp_y * 0.8
+            for radius in [0.6, 0.8, 1.0, 1.2]:
 
-            waypoint_plot.set_data(
-                [waypoint_x],
-                [waypoint_y]
-            )
+                if found:
+                    break
 
-            waypoint_solutions = analytical_ik(
-                waypoint_x,
-                waypoint_y,
-                arm.l1,
-                arm.l2
-            )
+                for perp_x, perp_y in directions:
 
-            w_theta1, w_theta2 = waypoint_solutions[0]
+                    waypoint_x = obstacle_x + perp_x * radius
+                    waypoint_y = obstacle_y + perp_y * radius
 
-            old_theta1 = arm.theta1
-            old_theta2 = arm.theta2
+                    waypoint_plot.set_data(
+                        [waypoint_x],
+                        [waypoint_y]
+                    )
 
-            arm.plan_trajectory(
-                w_theta1,
-                w_theta2,
-                steps=50
-            )
+                    try:
 
-            first_part = arm.trajectory.copy()
+                        waypoint_solutions = analytical_ik(
+                            waypoint_x,
+                            waypoint_y,
+                            arm.l1,
+                            arm.l2
+                        )
 
-            arm.theta1 = w_theta1
-            arm.theta2 = w_theta2
+                        for w_theta1, w_theta2 in waypoint_solutions:
 
-            arm.plan_trajectory(
-                best_solution[0],
-                best_solution[1],
-                steps=50
-            )
+                            old_theta1 = arm.theta1
+                            old_theta2 = arm.theta2
 
-            second_part = arm.trajectory.copy()
+                            arm.plan_trajectory(
+                                w_theta1,
+                                w_theta2,
+                                steps=50
+                            )
 
-            arm.theta1 = old_theta1
-            arm.theta2 = old_theta2
+                            first_part = arm.trajectory.copy()
 
-            arm.trajectory = (
-                first_part +
-                second_part
-            )
+                            arm.theta1 = w_theta1
+                            arm.theta2 = w_theta2
 
-            arm.current_waypoint = 0
+                            arm.plan_trajectory(
+                                theta1,
+                                theta2,
+                                steps=50
+                            )
 
-        else:
+                            second_part = arm.trajectory.copy()
 
-            waypoint_plot.set_data([], [])
+                            candidate_trajectory = (
+                                first_part +
+                                second_part
+                            )
 
-    except:
-        pass
+                            arm.theta1 = old_theta1
+                            arm.theta2 = old_theta2
+
+                            collides = trajectory_collides(
+                                arm,
+                                candidate_trajectory,
+                                obstacle_x,
+                                obstacle_y,
+                                obstacle_radius
+                            )
+
+                            if not collides:
+
+                                arm.trajectory = candidate_trajectory
+                                arm.current_waypoint = 0
+
+                                found = True
+                                break
+
+                        if found:
+                            break
+
+                    except:
+                        pass
+
+                if found:
+                    break
+
+            if found:
+                break
+
+    except Exception as e:
+        print(e)
 
 fig.canvas.mpl_connect(
     'button_press_event',
