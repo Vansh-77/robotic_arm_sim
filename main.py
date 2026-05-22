@@ -61,13 +61,6 @@ def on_click(event):
         return
 
     target_x , target_y = target_constaint(event.xdata,event.ydata,arm.l1 , arm.l2)
-    
-    print(f"Target: ({target_x:.2f}, {target_y:.2f})")
-    
-fig.canvas.mpl_connect('button_press_event', on_click)
-
-def update(frame):
-
     try:
         solutions = analytical_ik(
         target_x,
@@ -93,10 +86,15 @@ def update(frame):
                 best_solution = (theta1, theta2)
                 print("Found collision-free solution.")
                 break
-        arm.target_theta1 = best_solution[0]
-        arm.target_theta2 = best_solution[1]
+        arm.plan_trajectory(best_solution[0], best_solution[1])
     except:
         pass
+    
+    print(f"Target: ({target_x:.2f}, {target_y:.2f})")
+    
+fig.canvas.mpl_connect('button_press_event', on_click)
+
+def update(frame):
     
     arm.update_motion()
     x, y = arm.forward_kinematics()

@@ -12,9 +12,51 @@ class RoboticArm2D:
         self.target_theta1 = 0 
         self.target_theta2 = 0
         
-    def update_motion(self , kp = 0.1):
+        self.trajectory = []
+        self.current_waypoint = 0
+        
+    def plan_trajectory(self , target_theta1 , target_theta2 , steps = 100):
+        self.trajectory=[]
+        
+        theta1_points = np.linspace(
+            self.theta1,
+            target_theta1,
+            steps
+        )
+
+        theta2_points = np.linspace(
+            self.theta2,
+            target_theta2,
+            steps
+        )
+
+        self.trajectory = list(
+            zip(theta1_points, theta2_points)
+        )
+
+        self.current_waypoint = 0    
+        
+        
+    def update_motion(self , kp = 0.5):
+
+        if self.current_waypoint >= len(self.trajectory):
+           return
+
+        self.target_theta1, self.target_theta2 = self.trajectory[
+            self.current_waypoint
+        ]
+
         self.theta1 += np.clip(kp * (self.target_theta1 - self.theta1), -self.max_velocity , self.max_velocity)
         self.theta2 += np.clip(kp * (self.target_theta2 - self.theta2), -self.max_velocity , self.max_velocity)
+
+        threshold = 0.02
+
+        if (
+            abs(self.target_theta1 - self.theta1) < threshold
+            and
+            abs(self.target_theta2 - self.theta2) < threshold
+         ):
+             self.current_waypoint += 1
         
     def set_angles(self , theta1 , theta2):
             self.theta1 = theta1 
