@@ -7,15 +7,16 @@ from arm import RoboticArm2D
 from config import *
 from utils import target_constaint
 from ik import analytical_ik
-from collision import trajectory_collides, check_collision
+from collision import *
+from rrt import *
 
 l1 = LINK1_LENGTH
 l2 = LINK2_LENGTH
 
 arm = RoboticArm2D(l1, l2)
 
-target_x = 1.5
-target_y = 1.0
+target_x = l1 + l2
+target_y = 0
 
 fig, ax = plt.subplots()
 
@@ -56,6 +57,9 @@ target_plot, = ax.plot([], [], 'rx', markersize=12)
 
 waypoint_plot, = ax.plot([], [], 'go', markersize=10)
 
+tree_lines = []
+path_lines = []
+
 obstacle_x = 1
 obstacle_y = 1
 obstacle_radius = 0.3
@@ -82,146 +86,163 @@ def on_click(event):
         arm.l1,
         arm.l2
     )
+    target_solutions = analytical_ik(
+    target_x,
+    target_y,
+    arm.l1,
+    arm.l2
+    )
+    goal_theta1 , goal_theta2 = target_solutions[0]
+    for theta1 , theta2 in target_solutions:
+        if not check_collision_angles(
+            arm,
+            theta1,
+            theta2,
+            obstacle_x,
+            obstacle_y,
+            obstacle_radius
+        ):
+            goal_theta1 , goal_theta2 = theta1 , theta2
+            break
+            
+    
+    start_node = Node(arm.theta1 , arm.theta2)
+    tree = [start_node]
+    
+    goal_node = None
+    
+    for i in range(2000):
 
-    waypoint_plot.set_data([], [])
+        rand_theta1, rand_theta2 = random_config()
 
-    try:
-
-        target_solutions = analytical_ik(
-            target_x,
-            target_y,
-            arm.l1,
-            arm.l2
+        nearest = nearest_node(
+            tree,
+            rand_theta1,
+            rand_theta2
         )
 
-        found = False
+        new_node = steer(
+            nearest,
+            rand_theta1,
+            rand_theta2,
+            step_size=0.15
+        )
 
-        for theta1, theta2 in target_solutions:
+        collision = check_collision_angles(
+            arm,
+            new_node.theta1,
+            new_node.theta2,
+            obstacle_x,
+            obstacle_y,
+            obstacle_radius
+        )
 
-            arm.plan_trajectory(
-                theta1,
-                theta2,
-                steps=100
+        if collision:
+            continue
+
+        new_node.parent = nearest
+
+        tree.append(new_node)
+
+        goal_distance = np.sqrt(
+
+        (new_node.theta1 - goal_theta1)**2 +
+
+        (new_node.theta2 - goal_theta2)**2
+        )
+
+        if goal_distance < 0.2:
+
+            goal_node = new_node
+            break
+    
+    for l in tree_lines:
+        l.remove()
+
+    tree_lines.clear()
+
+    for l in path_lines:
+        l.remove()
+
+    path_lines.clear() 
+
+    for node in tree:
+
+        if node.parent is None:
+            continue
+
+        old_theta1 = arm.theta1
+        old_theta2 = arm.theta2
+
+        arm.theta1 = node.theta1
+        arm.theta2 = node.theta2
+
+        x1, y1 = arm.get_end_effector()
+
+        arm.theta1 = node.parent.theta1
+        arm.theta2 = node.parent.theta2
+
+        x2, y2 = arm.get_end_effector()
+
+        arm.theta1 = old_theta1
+        arm.theta2 = old_theta2
+
+        tree_line, = ax.plot(
+            [x1, x2],
+            [y1, y2],
+            color='gray',
+            alpha=0.3
+        )
+        tree_lines.append(tree_line)
+    
+    if goal_node is not None:
+
+        path = []
+
+        current = goal_node
+
+        while current is not None:
+
+            path.append(
+                (
+                current.theta1,
+                current.theta2
+                )
             )
 
-            direct_collision = trajectory_collides(
-                arm,
-                arm.trajectory,
-                obstacle_x,
-                obstacle_y,
-                obstacle_radius
-            )
+            current = current.parent
 
-            if not direct_collision:
+        path.reverse()
+        path_x = []
+        path_y = []
 
-                arm.current_waypoint = 0
-                found = True
-                break
+        for theta1, theta2 in path:
 
-            dx = target_x - obstacle_x
-            dy = target_y - obstacle_y
+            old_theta1 = arm.theta1
+            old_theta2 = arm.theta2
 
-            length = np.sqrt(dx**2 + dy**2)
+            arm.theta1 = theta1
+            arm.theta2 = theta2
 
-            if length == 0:
-                continue
+            x, y = arm.get_end_effector()
 
-            dx /= length
-            dy /= length
+            path_x.append(x)
+            path_y.append(y)
 
-            directions = [
-                ( dy,  dx),
-                (-dy, -dx),
-                ( dy, -dx),
-                (-dy,  dx)
-            ]
+            arm.theta1 = old_theta1
+            arm.theta2 = old_theta2
 
-            for radius in [0.6, 0.8, 1.0, 1.2]:
+        path_line, = ax.plot(
+            path_x,
+            path_y,
+            color='green',
+            linewidth=3
+        )
+        path_lines.append(path_line)
 
-                if found:
-                    break
-
-                for perp_x, perp_y in directions:
-
-                    waypoint_x = obstacle_x + perp_x * radius
-                    waypoint_y = obstacle_y + perp_y * radius
-
-                    waypoint_plot.set_data(
-                        [waypoint_x],
-                        [waypoint_y]
-                    )
-
-                    try:
-
-                        waypoint_solutions = analytical_ik(
-                            waypoint_x,
-                            waypoint_y,
-                            arm.l1,
-                            arm.l2
-                        )
-
-                        for w_theta1, w_theta2 in waypoint_solutions:
-
-                            old_theta1 = arm.theta1
-                            old_theta2 = arm.theta2
-
-                            arm.plan_trajectory(
-                                w_theta1,
-                                w_theta2,
-                                steps=50
-                            )
-
-                            first_part = arm.trajectory.copy()
-
-                            arm.theta1 = w_theta1
-                            arm.theta2 = w_theta2
-
-                            arm.plan_trajectory(
-                                theta1,
-                                theta2,
-                                steps=50
-                            )
-
-                            second_part = arm.trajectory.copy()
-
-                            candidate_trajectory = (
-                                first_part +
-                                second_part
-                            )
-
-                            arm.theta1 = old_theta1
-                            arm.theta2 = old_theta2
-
-                            collides = trajectory_collides(
-                                arm,
-                                candidate_trajectory,
-                                obstacle_x,
-                                obstacle_y,
-                                obstacle_radius
-                            )
-
-                            if not collides:
-
-                                arm.trajectory = candidate_trajectory
-                                arm.current_waypoint = 0
-
-                                found = True
-                                break
-
-                        if found:
-                            break
-
-                    except:
-                        pass
-
-                if found:
-                    break
-
-            if found:
-                break
-
-    except Exception as e:
-        print(e)
+        arm.trajectory = path
+        arm.current_waypoint = 0
+    
 
 fig.canvas.mpl_connect(
     'button_press_event',

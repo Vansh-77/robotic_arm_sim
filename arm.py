@@ -57,6 +57,7 @@ class RoboticArm2D:
             abs(self.target_theta2 - self.theta2) < threshold
          ):
              self.current_waypoint += 1
+             
         
     def set_angles(self , theta1 , theta2):
             self.theta1 = theta1 
