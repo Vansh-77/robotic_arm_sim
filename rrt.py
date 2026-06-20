@@ -1,4 +1,5 @@
 import numpy as np
+from collision import check_collision_angles
 
 class Node:
     def __init__(self, theta1, theta2):
@@ -8,6 +9,7 @@ class Node:
         
         
 def random_config():
+    
     theta1 = np.random.uniform(-np.pi , np.pi)
     theta2 = np.random.uniform(-np.pi , np.pi)
         
@@ -81,3 +83,136 @@ def steer(
         new_theta1,
         new_theta2
     )
+    
+    
+def rrt(arm,goal_theta1,goal_theta2,obstacle_x,obstacle_y,obstacle_radius,ax,tree_lines,path_lines):
+    start_node = Node(arm.theta1 , arm.theta2)
+    tree = [start_node]
+    
+    goal_node = None
+    
+    for i in range(2000):
+
+        # rand_theta1, rand_theta2 = random_config()
+        if np.random.rand() < 0.2:
+            rand_theta1 = goal_theta1
+            rand_theta2 = goal_theta2
+        else:
+            rand_theta1, rand_theta2 = random_config()
+
+        nearest = nearest_node(
+            tree,
+            rand_theta1,
+            rand_theta2
+        )
+
+        new_node = steer(
+            nearest,
+            rand_theta1,
+            rand_theta2,
+            step_size=0.15
+        )
+
+        collision = check_collision_angles(
+            arm,
+            new_node.theta1,
+            new_node.theta2,
+            obstacle_x,
+            obstacle_y,
+            obstacle_radius
+        )
+
+        if collision:
+            continue
+
+        new_node.parent = nearest
+
+        tree.append(new_node)
+
+        goal_distance = np.sqrt(
+
+        (new_node.theta1 - goal_theta1)**2 +
+
+        (new_node.theta2 - goal_theta2)**2
+        )
+
+        if goal_distance < 0.2:
+
+            goal_node = new_node
+            break
+    for node in tree:
+
+        if node.parent is None:
+            continue
+
+        old_theta1 = arm.theta1
+        old_theta2 = arm.theta2
+
+        arm.theta1 = node.theta1
+        arm.theta2 = node.theta2
+
+        x1, y1 = arm.get_end_effector()
+
+        arm.theta1 = node.parent.theta1
+        arm.theta2 = node.parent.theta2
+
+        x2, y2 = arm.get_end_effector()
+
+        arm.theta1 = old_theta1
+        arm.theta2 = old_theta2
+
+        tree_line, = ax.plot(
+            [x1, x2],
+            [y1, y2],
+            color='gray',
+            alpha=0.3
+        )
+        tree_lines.append(tree_line)
+    
+    if goal_node is not None:
+
+        path = []
+
+        current = goal_node
+
+        while current is not None:
+
+            path.append(
+                (
+                current.theta1,
+                current.theta2
+                )
+            )
+
+            current = current.parent
+
+        path.reverse()
+        path_x = []
+        path_y = []
+
+        for theta1, theta2 in path:
+
+            old_theta1 = arm.theta1
+            old_theta2 = arm.theta2
+
+            arm.theta1 = theta1
+            arm.theta2 = theta2
+
+            x, y = arm.get_end_effector()
+
+            path_x.append(x)
+            path_y.append(y)
+
+            arm.theta1 = old_theta1
+            arm.theta2 = old_theta2
+
+        path_line, = ax.plot(
+            path_x,
+            path_y,
+            color='green',
+            linewidth=3
+        )
+        path_lines.append(path_line)
+
+        arm.trajectory = path
+        arm.current_waypoint = 0

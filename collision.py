@@ -81,8 +81,8 @@ def check_collision_angles(
     arm.theta2 = old_theta2
 
     return (
-        d1 < obstacle_radius or
-        d2 < obstacle_radius
+        d1 < obstacle_radius+0.1 or
+        d2 < obstacle_radius+0.1
     )
 def trajectory_collides(
     arm,
